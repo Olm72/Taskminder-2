@@ -269,7 +269,7 @@ def reemplazar_tiempo_disponible():
     data = request.get_json()
 
     replace_data = {
-        'id': data.get('id', None),  # ID de la fila a reemplazar
+        'id': data.get('id', None),
         'id_usuario': current_user.id_usuario,
         'minutos_disponibles_lunes': data.get('minutos_disponibles_lunes', 0),
         'minutos_disponibles_martes': data.get('minutos_disponibles_martes', 0),
