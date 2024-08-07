@@ -222,13 +222,13 @@ def taskminder():
 
     if tiempo_disponible:
         horas = {
-            'lunes': redondear_a_dos_decimales(redondear_a_cuartos(float(tiempo_disponible.minutos_disponibles_lunes) / 60)),
-            'martes': redondear_a_dos_decimales(redondear_a_cuartos(float(tiempo_disponible.minutos_disponibles_martes) / 60)),
-            'miercoles': redondear_a_dos_decimales(redondear_a_cuartos(float(tiempo_disponible.minutos_disponibles_miercoles) / 60)),
-            'jueves': redondear_a_dos_decimales(redondear_a_cuartos(float(tiempo_disponible.minutos_disponibles_jueves) / 60)),
-            'viernes': redondear_a_dos_decimales(redondear_a_cuartos(float(tiempo_disponible.minutos_disponibles_viernes) / 60)),
-            'sabado': redondear_a_dos_decimales(redondear_a_cuartos(float(tiempo_disponible.minutos_disponibles_sabado) / 60)),
-            'domingo': redondear_a_dos_decimales(redondear_a_cuartos(float(tiempo_disponible.minutos_disponibles_domingo) / 60))
+            'lunes': redondear_a_dos_decimales(redondear_a_cuartos(int(tiempo_disponible.minutos_disponibles_lunes) / 60)),
+            'martes': redondear_a_dos_decimales(redondear_a_cuartos(int(tiempo_disponible.minutos_disponibles_martes) / 60)),
+            'miercoles': redondear_a_dos_decimales(redondear_a_cuartos(int(tiempo_disponible.minutos_disponibles_miercoles) / 60)),
+            'jueves': redondear_a_dos_decimales(redondear_a_cuartos(int(tiempo_disponible.minutos_disponibles_jueves) / 60)),
+            'viernes': redondear_a_dos_decimales(redondear_a_cuartos(int(tiempo_disponible.minutos_disponibles_viernes) / 60)),
+            'sabado': redondear_a_dos_decimales(redondear_a_cuartos(int(tiempo_disponible.minutos_disponibles_sabado) / 60)),
+            'domingo': redondear_a_dos_decimales(redondear_a_cuartos(int(tiempo_disponible.minutos_disponibles_domingo) / 60))
         }
         horas_totales_disponibles = redondear_a_dos_decimales(redondear_a_cuartos(float(tiempo_disponible.horas_totales_disponibles)))
     else:
@@ -258,7 +258,7 @@ def taskminder():
     for tarea in tareas:
         dia = tarea.dia_semana
         if dia in tareas_por_dia:
-            tarea.tiempo = int(tarea.tiempo)  # Asegúrate de que los minutos no tengan decimales
+            tarea.tiempo = int(tarea.tiempo)
             tareas_por_dia[dia].append(tarea)
 
     return render_template('sitio/taskminder.html', tareas=tareas_por_dia, horas=horas, horas_totales_disponibles=horas_totales_disponibles)
