@@ -4,23 +4,34 @@ from models import TareasSemana, Usuario, MensajesCliente, OpinionesCliente, Tie
 from apscheduler.schedulers.background import BackgroundScheduler
 from db import session
 from datetime import datetime, timedelta
-from tzlocal import get_localzone
 from sqlalchemy.sql import text
+from pygame import mixer
 import pytz
 import logging
 import os
 
-# Para obtener la zona horaria local del ordenador del usuario
-local_tz = get_localzone()
+# Para obtener la zona horaria local España
+local_tz = pytz.timezone('Europe/Madrid')
+
 # Convertir la zona horaria a un objeto pytz
 local_tz = pytz.timezone(str(local_tz))
 
+# Creamos la app de flask
 app = Flask(__name__)
+
 app.config['SECRET_KEY'] = 'taskminder24_secret_key'
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = "Por favor, inicia sesión para entrar."
+
+# Configuración del logger para mostrar información en la consola
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Verificamos que el scheduler se está iniciando
+logger.info("Iniciando el scheduler...")
+logger.info("Scheduler iniciado correctamente.")
 
 # Configuración del scheduler
 scheduler = BackgroundScheduler(timezone=local_tz)
@@ -34,7 +45,7 @@ base_dir = os.path.abspath(os.path.dirname(__file__))
 database_dir = os.path.join(base_dir, 'database')
 database_path = os.path.join(database_dir, 'task_minder_db.db')
 
-# CreaMOS el directorio de la BBDD si no existe
+# Creamos el directorio de la BBDD si no existe
 if not os.path.exists(database_dir):
     os.makedirs(database_dir)
 
@@ -197,7 +208,7 @@ def redondear_a_cuartos(valor):
         valor = float(valor)
     return round(valor * 4) / 4
 
-# Función para redondear a dos decimales
+@app.template_filter('redondear_a_dos_decimales')
 def redondear_a_dos_decimales(valor):
     if isinstance(valor, str):
         valor = float(valor)
@@ -206,12 +217,6 @@ def redondear_a_dos_decimales(valor):
 # Registramos los filtros en Jinja
 app.jinja_env.filters['redondear_a_cuartos'] = redondear_a_cuartos
 app.jinja_env.filters['redondear_a_dos_decimales'] = redondear_a_dos_decimales
-
-@app.template_filter('redondear_a_dos_decimales')
-def redondear_a_dos_decimales(valor):
-    if isinstance(valor, str):
-        valor = float(valor)
-    return "{:.2f}".format(valor)
 
 @app.route('/taskminder', methods=['GET', 'POST'])
 @login_required
@@ -357,6 +362,7 @@ def agregar_tarea():
                 id_usuario=current_user.id_usuario
             )
             session.add(nueva_tarea)
+
         session.commit()
         flash('Tarea guardada con éxito', 'success')
 
@@ -388,7 +394,7 @@ def configurar_horas():
     tiempo_disponible.minutos_disponibles_sabado = minutos_disponibles_por_dia['sabado']
     tiempo_disponible.minutos_disponibles_domingo = minutos_disponibles_por_dia['domingo']
 
-    tiempo_disponible.actualizar_horas_totales()  # Actualiza las horas totales disponibles
+    tiempo_disponible.actualizar_horas_totales()
 
     session.add(tiempo_disponible)
     session.commit()
@@ -399,30 +405,39 @@ def configurar_horas():
 @login_required
 def horas_disponibles():
     if request.method == "POST":
-        horas = float(request.form.get("horas"))
-        if horas <= 0:
-            flash('Por favor, introduce un valor válido para las horas disponibles.')
+        minutos_disponibles_por_dia = {
+            'lunes': int(request.form.get("lunes", 0)),
+            'martes': int(request.form.get("martes", 0)),
+            'miercoles': int(request.form.get("miercoles", 0)),
+            'jueves': int(request.form.get("jueves", 0)),
+            'viernes': int(request.form.get("viernes", 0)),
+            'sabado': int(request.form.get("sabado", 0)),
+            'domingo': int(request.form.get("domingo", 0))
+        }
+
+        if any(tiempo < 0 for tiempo in minutos_disponibles_por_dia.values()):
+            flash('Por favor, introduce valores válidos para las horas disponibles.')
             return redirect(url_for("horas_disponibles"))
 
         tiempo_disponible_obj = session.query(TiempoDisponible).filter_by(id_usuario=current_user.id_usuario).first()
         if tiempo_disponible_obj:
-            tiempo_disponible_obj.minutos_disponibles_lunes = horas * 60 / 7  # Distribuir las horas por igual para todos los días
-            tiempo_disponible_obj.minutos_disponibles_martes = horas * 60 / 7
-            tiempo_disponible_obj.minutos_disponibles_miercoles = horas * 60 / 7
-            tiempo_disponible_obj.minutos_disponibles_jueves = horas * 60 / 7
-            tiempo_disponible_obj.minutos_disponibles_viernes = horas * 60 / 7
-            tiempo_disponible_obj.minutos_disponibles_sabado = horas * 60 / 7
-            tiempo_disponible_obj.minutos_disponibles_domingo = horas * 60 / 7
+            tiempo_disponible_obj.minutos_disponibles_lunes = minutos_disponibles_por_dia['lunes']
+            tiempo_disponible_obj.minutos_disponibles_martes = minutos_disponibles_por_dia['martes']
+            tiempo_disponible_obj.minutos_disponibles_miercoles = minutos_disponibles_por_dia['miercoles']
+            tiempo_disponible_obj.minutos_disponibles_jueves = minutos_disponibles_por_dia['jueves']
+            tiempo_disponible_obj.minutos_disponibles_viernes = minutos_disponibles_por_dia['viernes']
+            tiempo_disponible_obj.minutos_disponibles_sabado = minutos_disponibles_por_dia['sabado']
+            tiempo_disponible_obj.minutos_disponibles_domingo = minutos_disponibles_por_dia['domingo']
         else:
             tiempo_disponible_obj = TiempoDisponible(
                 id_usuario=current_user.id_usuario,
-                minutos_disponibles_lunes=horas * 60 / 7,
-                minutos_disponibles_martes=horas * 60 / 7,
-                minutos_disponibles_miercoles=horas * 60 / 7,
-                minutos_disponibles_jueves=horas * 60 / 7,
-                minutos_disponibles_viernes=horas * 60 / 7,
-                minutos_disponibles_sabado=horas * 60 / 7,
-                minutos_disponibles_domingo=horas * 60 / 7
+                minutos_disponibles_lunes=minutos_disponibles_por_dia['lunes'],
+                minutos_disponibles_martes=minutos_disponibles_por_dia['martes'],
+                minutos_disponibles_miercoles=minutos_disponibles_por_dia['miercoles'],
+                minutos_disponibles_jueves=minutos_disponibles_por_dia['jueves'],
+                minutos_disponibles_viernes=minutos_disponibles_por_dia['viernes'],
+                minutos_disponibles_sabado=minutos_disponibles_por_dia['sabado'],
+                minutos_disponibles_domingo=minutos_disponibles_por_dia['domingo']
             )
             session.add(tiempo_disponible_obj)
         session.commit()
@@ -431,28 +446,16 @@ def horas_disponibles():
         return redirect(url_for("taskminder"))
 
     tiempo_disponible_obj = session.query(TiempoDisponible).filter_by(id_usuario=current_user.id_usuario).first()
-    horas_disponibles_ = tiempo_disponible_obj.horas_totales_disponibles if tiempo_disponible_obj else 0
-    return render_template('sitio/horas_disponibles.html', horas_disponibles=horas_disponibles_)
-
-@app.route('/configurar_alarma', methods=['POST'])
-@login_required
-def configurar_alarma():
-    index = int(request.form.get('index'))
-    tarea = session.query(TareasSemana).filter_by(id_tarea=index, id_usuario=current_user.id_usuario).first()
-
-    if not tarea:
-        flash('Tarea no encontrada', 'error')
-        return redirect(url_for('taskminder'))
-
-    tiempo = request.form.get('tiempo')
-    if tiempo:
-        run_date = datetime.strptime(tiempo, '%Y-%m-%dT%H:%M')
-        scheduler.add_job(alarma, 'date', run_date=run_date, args=[tarea])
-        flash('Alarma configurada con éxito.')
-    else:
-        flash('Por favor, proporciona una fecha y hora válida para la alarma.', 'error')
-
-    return redirect(url_for('taskminder'))
+    horas_disponibles_dias = {
+        'lunes': tiempo_disponible_obj.minutos_disponibles_lunes if tiempo_disponible_obj else 0,
+        'martes': tiempo_disponible_obj.minutos_disponibles_martes if tiempo_disponible_obj else 0,
+        'miercoles': tiempo_disponible_obj.minutos_disponibles_miercoles if tiempo_disponible_obj else 0,
+        'jueves': tiempo_disponible_obj.minutos_disponibles_jueves if tiempo_disponible_obj else 0,
+        'viernes': tiempo_disponible_obj.minutos_disponibles_viernes if tiempo_disponible_obj else 0,
+        'sabado': tiempo_disponible_obj.minutos_disponibles_sabado if tiempo_disponible_obj else 0,
+        'domingo': tiempo_disponible_obj.minutos_disponibles_domingo if tiempo_disponible_obj else 0
+    }
+    return render_template('sitio/horas_disponibles.html', horas_disponibles=horas_disponibles_dias)
 
 @app.route('/posponer_alarma', methods=['POST'])
 @login_required
@@ -469,8 +472,8 @@ def posponer_alarma():
 
     try:
         # Para posponer el horario de inicio de la tarea
-        nuevo_horario_inicio = datetime.strptime(tarea.horario_inicio, '%H:%M') + timedelta(minutes=tiempo_posponer)
-        tarea.horario_inicio = nuevo_horario_inicio.strftime('%H:%M')
+        nuevo_horario_inicio = (datetime.combine(datetime.today(), tarea.horario_inicio) + timedelta(minutes=tiempo_posponer)).time()
+        tarea.horario_inicio = nuevo_horario_inicio
 
         session.commit()
 
@@ -485,6 +488,55 @@ def posponer_alarma():
         return redirect(url_for('taskminder'))
 
     return redirect(url_for('taskminder'))
+
+@app.route('/configurar_alarma', methods=['POST'])
+@login_required
+def configurar_alarma():
+    index = int(request.form.get('index'))
+    tarea = session.query(TareasSemana).filter_by(id_tarea=index, id_usuario=current_user.id_usuario).first()
+
+    if not tarea:
+        flash('Tarea no encontrada', 'error')
+        return redirect(url_for('taskminder'))
+
+    hora_alarma = datetime.combine(datetime.today(), tarea.horario_inicio)
+    tiempo_recordatorio = tarea.tiempo_recordatorio
+
+    app.logger.info("Programando alarma para %s a las %s", tarea.contenido_tarea, hora_alarma)
+
+    job_alarma = scheduler.add_job(alarma, 'date', run_date=hora_alarma, args=[tarea])
+    app.logger.info("Alarma programada con ID: %s", job_alarma.id)
+
+    if tiempo_recordatorio:
+        hora_recordatorio = hora_alarma - timedelta(minutes=tiempo_recordatorio)
+        app.logger.info("Programando recordatorio para %s a las %s", tarea.contenido_tarea, hora_recordatorio)
+        job_recordatorio = scheduler.add_job(recordatorio, 'date', run_date=hora_recordatorio, args=[tarea])
+        app.logger.info("Recordatorio programado con ID: %s", job_recordatorio.id)
+
+    flash('Alarma configurada con éxito para la tarea.')
+    return redirect(url_for('taskminder'))
+
+def recordatorio(tarea):
+    print("Recordatorio para la tarea: " + tarea.contenido_tarea)
+    mixer.init()
+    sound_path = os.path.join(base_dir, 'static', 'Alarma_Taskminder.mp3')
+    if os.path.exists(sound_path):
+        mixer.music.load(sound_path)
+        mixer.music.play()
+        print("Recordatorio sonando...")
+    else:
+        print("Archivo de sonido no encontrado: " + sound_path)
+
+def alarma(tarea):
+    print("Alarma para la tarea: " + tarea.contenido_tarea)
+    mixer.init()
+    sound_path = os.path.join(base_dir, 'static', 'Alarma_Taskminder_2.mp3')
+    if os.path.exists(sound_path):
+        mixer.music.load(sound_path)
+        mixer.music.play()
+        print("Alarma sonando...")
+    else:
+        print("Archivo de sonido no encontrado: " + sound_path)
 
 @app.route('/borrar_tarea', methods=['POST'])
 @login_required
@@ -591,42 +643,28 @@ def ver_horario():
 # Funciones auxiliares:
 
 #  Esta función recalcula los tiempos de las tareas teniendo en cuenta las prioridades y asegura que el tiempo total de las tareas no exceda el tiempo disponible.
-def ajustar_tiempos_tareas(tareas, tiempo_disponible):
-    reduccion_por_prioridad = {
-        3: 0.1,  # Prioridad máxima
-        2: 0.2,  # Prioridad importante
-        1: 0.3,  # Prioridad moderada
-        0: 0.4   # Prioridad menor
-    }
+def ajustar_tiempos_tareas(dia, tiempo_disponible):
+    tareas = session.query(TareasSemana).filter_by(dia_semana=dia, id_usuario=current_user.id_usuario).order_by(TareasSemana.prioridad.desc()).all()
+    tiempo_total = sum(tarea.tiempo for tarea in tareas)
+    if tiempo_total <= tiempo_disponible:
+        return True  # No es necesario ajustar
 
-    nuevos_tiempos = []
-    for tarea in tareas:
-        prioridad = tarea.prioridad
-        tiempo_inicial = tarea.tiempo
-        if prioridad in reduccion_por_prioridad:
-            porcentaje_reduccion = reduccion_por_prioridad[prioridad]
-            nuevo_tiempo = tiempo_inicial * (1 - porcentaje_reduccion)
-            nuevo_tiempo = max(nuevo_tiempo, tiempo_inicial * 0.5)
-            nuevos_tiempos.append(nuevo_tiempo)
-        else:
-            nuevos_tiempos.append(tiempo_inicial)
+    while tiempo_total > tiempo_disponible:
+        tiempo_total_ajustado = 0
+        for tarea in tareas:
+            if tarea.tiempo > tarea.tiempo_original * 0.5:
+                tarea.tiempo *= 0.9  # Reducimos el tiempo en un 10%
+                tiempo_total_ajustado += tarea.tiempo
+            else:
+                return False  # No se puede reducir más del 50%
 
-    tiempo_total_asignado = sum(nuevos_tiempos)
+        tiempo_total = tiempo_total_ajustado
 
-    if tiempo_total_asignado > tiempo_disponible:
-        factor_ajuste = tiempo_disponible / tiempo_total_asignado
-        nuevos_tiempos = [tiempo * factor_ajuste for tiempo in nuevos_tiempos]
-
-    for tarea, nuevo_tiempo in zip(tareas, nuevos_tiempos):
-        tarea.tiempo = nuevo_tiempo
-        session.commit()
-
-    return nuevos_tiempos
+    session.commit()
+    return True
 
 # Esta función se encarga de ajustar los tiempos de las tareas siguientes y reducirlas proporcionalmente según su importancia.
 def reestructurar_tareas(tareas, total_horas_disponibles):
-    # Paso 1: Calculamos los tiempos ajustados iniciales
-    tiempos_ajustados_iniciales = []
     reduccion_por_prioridad = {
         3: 0.1,  # Prioridad máxima
         2: 0.2,  # Prioridad importante
@@ -634,6 +672,7 @@ def reestructurar_tareas(tareas, total_horas_disponibles):
         0: 0.4   # Prioridad menor
     }
 
+    tiempos_ajustados_iniciales = []
     for tarea in tareas:
         prioridad = tarea.prioridad
         tiempo_inicial = tarea.tiempo
@@ -645,12 +684,10 @@ def reestructurar_tareas(tareas, total_horas_disponibles):
         else:
             tiempos_ajustados_iniciales.append(tiempo_inicial)
 
-    # Paso 2: Sumamos los tiempos ajustados iniciales y comparamos con las horas disponibles
     total_tiempo_ajustado_inicial = sum(tiempos_ajustados_iniciales)
     diferencia_tiempo = total_horas_disponibles - total_tiempo_ajustado_inicial
 
     if diferencia_tiempo > 0:
-        # Paso 3: Reorganizamos el tiempo faltante según la prioridad de cada tarea, proporcionalmente.
         total_reduccion = sum(reduccion_por_prioridad.get(tarea.prioridad, 0.4) for tarea in tareas)
 
         tiempos_finales = []
@@ -662,9 +699,8 @@ def reestructurar_tareas(tareas, total_horas_disponibles):
     else:
         tiempos_finales = tiempos_ajustados_iniciales
 
-    # Aplicamos los nuevos tiempos ajustados a las tareas y los guardamos en la BBDD
     for tarea, tiempo_final in zip(tareas, tiempos_finales):
-        tarea.tiempo = max(tiempo_final, tarea.tiempo * 0.5)  # ¡No reducir más del 50% del tiempo fijado por el usuario como tiempo máximo para dedicar a las tareas del día!
+        tarea.tiempo = max(tiempo_final, tarea.tiempo * 0.5)  # No reducir más del 50% del tiempo fijado por el usuario
         session.commit()
 
     return tiempos_finales
@@ -722,14 +758,11 @@ def verificar_cambio_actividad():
 
 scheduler.add_job(verificar_cambio_actividad, 'interval', minutes=1)
 
-def alarma(tarea):
-    print("Alarma para la tarea: " + tarea.contenido_tarea)
-
-
 # Para errores:
 @app.errorhandler(404)
 def pagina_no_encontrada(e):
     return render_template('404.html'), 404
+
 
 
 if __name__ == "__main__":
