@@ -111,6 +111,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 window.location.href = '/taskminder';
             } else {
                 response.json().then(data => {
+                    alert("Error al agregar tarea: "+ data.error);
                     console.error("Error al agregar tarea:", data.error);
                 });
             }
