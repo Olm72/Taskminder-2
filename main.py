@@ -300,8 +300,6 @@ def reemplazar_tiempo_disponible():
 
     return jsonify({"success": True, "message": "Tiempo disponible reemplazado correctamente"})
 
-from datetime import datetime
-
 @app.route('/agregar_tarea', methods=['POST'])
 @login_required
 def agregar_tarea():
