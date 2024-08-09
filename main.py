@@ -349,6 +349,22 @@ def agregar_tarea():
             session.commit()
 
         for dia in dias_semana:
+            # Obtener el objeto de tiempo disponible para el usuario
+            tiempo_disponible_obj = session.query(TiempoDisponible).filter_by(id_usuario=current_user.id_usuario).first()
+            # Obtener el tiempo disponible para el día específico usando getattr
+            tiempo_disponible_dia = getattr(tiempo_disponible_obj, f'minutos_disponibles_{dia}')
+
+            # Obtener todas las tareas del día específico
+            tareas_dia = session.query(TareasSemana).filter_by(id_usuario=current_user.id_usuario, dia_semana=dia).all()
+            # Calcular el tiempo total de las tareas del día
+            total_tiempo_tareas = sum(t.tiempo for t in tareas_dia)
+
+            # Verificar si el tiempo total de las tareas más la nueva tarea excede el tiempo disponible
+            if total_tiempo_tareas + tiempo > tiempo_disponible_dia:
+                flash('Esta actividad lleva más tiempo del disponible, configura nuevamente el tiempo de este día para poder dedicarle ese tiempo a esta tarea.')
+                return jsonify({"error": "Tiempo insuficiente"}), 400
+
+            # Crear la nueva tarea
             nueva_tarea = TareasSemana(
                 contenido_tarea=contenido_tarea,
                 prioridad=prioridad,
@@ -362,14 +378,11 @@ def agregar_tarea():
                 id_usuario=current_user.id_usuario
             )
             session.add(nueva_tarea)
+            session.commit()
+            # Ajustar tiempos de las tareas del día
+            ajustar_tiempos_tareas(dia, tiempo_disponible_dia)
 
-        session.commit()
         flash('Tarea guardada con éxito', 'success')
-
-        # Obtenemos todas las tareas del usuario
-        tareas = session.query(TareasSemana).filter_by(id_usuario=current_user.id_usuario).order_by(TareasSemana.horario_inicio).all()
-        tiempo_disponible = session.query(TiempoDisponible).filter_by(id_usuario=current_user.id_usuario).first().horas_totales_disponibles * 60  # Convertimos tiempo a minutos
-        reestructurar_tareas(tareas, tiempo_disponible)
 
     except Exception as e:
         session.rollback()
@@ -643,25 +656,43 @@ def ver_horario():
 # Funciones auxiliares:
 
 #  Esta función recalcula los tiempos de las tareas teniendo en cuenta las prioridades y asegura que el tiempo total de las tareas no exceda el tiempo disponible.
-def ajustar_tiempos_tareas(dia, tiempo_disponible):
+def ajustar_tiempos_tareas(dia, minutos_disponibles_dia):
     tareas = session.query(TareasSemana).filter_by(dia_semana=dia, id_usuario=current_user.id_usuario).order_by(TareasSemana.prioridad.desc()).all()
     tiempo_total = sum(tarea.tiempo for tarea in tareas)
-    if tiempo_total <= tiempo_disponible:
+
+    if tiempo_total <= minutos_disponibles_dia:
         return True  # No es necesario ajustar
 
-    while tiempo_total > tiempo_disponible:
-        tiempo_total_ajustado = 0
-        for tarea in tareas:
-            if tarea.tiempo > tarea.tiempo_original * 0.5:
-                tarea.tiempo *= 0.9  # Reducimos el tiempo en un 10%
-                tiempo_total_ajustado += tarea.tiempo
-            else:
-                return False  # No se puede reducir más del 50%
+    tiempos_ajustados = []
+    reduccion_por_prioridad = {
+        3: 0.1,  # Máxima
+        2: 0.2,  # Importante
+        1: 0.3,  # Moderada
+        0: 0.4   # Menor
+    }
 
-        tiempo_total = tiempo_total_ajustado
+    for tarea in tareas:
+        prioridad = tarea.prioridad
+        tiempo_inicial = tarea.tiempo
+        porcentaje_reduccion = reduccion_por_prioridad.get(prioridad, 0.4)
+        tiempo_ajustado = tiempo_inicial * (1 - porcentaje_reduccion)
+        tiempo_ajustado = max(tiempo_ajustado, tiempo_inicial * 0.5)  # No reducir más del 50%
+        tiempos_ajustados.append(tiempo_ajustado)
+
+    tiempo_total_ajustado = sum(tiempos_ajustados)
+    diferencia_tiempo = minutos_disponibles_dia - tiempo_total_ajustado
+
+    if diferencia_tiempo > 0:
+        total_reduccion = sum(reduccion_por_prioridad.get(tarea.prioridad, 0.4) for tarea in tareas)
+        for tarea, tiempo_ajustado in zip(tareas, tiempos_ajustados):
+            proporcion_redistribucion = reduccion_por_prioridad.get(tarea.prioridad, 0.4) / total_reduccion
+            tiempo_final = tiempo_ajustado + (proporcion_redistribucion * diferencia_tiempo)
+            tarea.tiempo = tiempo_final
+    else:
+        for tarea, tiempo_ajustado in zip(tareas, tiempos_ajustados):
+            tarea.tiempo = tiempo_ajustado
 
     session.commit()
-    return True
 
 # Esta función se encarga de ajustar los tiempos de las tareas siguientes y reducirlas proporcionalmente según su importancia.
 def reestructurar_tareas(tareas, total_horas_disponibles):
