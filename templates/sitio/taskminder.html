@@ -13,7 +13,14 @@
         {% endif %}
     {% endwith %}
     <br>
-    <p>Horas totales disponibles: {{ horas_totales_disponibles|redondear_a_cuartos|redondear_a_dos_decimales }} horas</p>
+    <p>Horas disponibles durante la semana: {{ horas_totales_disponibles|redondear_a_cuartos|redondear_a_dos_decimales }} horas</p>
+    <br>
+    <!-- Desglose del tiempo disponible para cada día -->
+    <ul>
+        {% for dia, horas in horas.items() %}
+            <li>{{ dia|capitalize }}: {{ horas }} horas</li>
+        {% endfor %}
+    </ul>
 
     <!-- Form para configurar horas -->
     <form class="taskminder" method="POST" action="{{ url_for('configurar_horas') }}">
